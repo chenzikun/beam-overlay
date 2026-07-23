@@ -1,34 +1,34 @@
-// MAX_SENSORS 由 JS 侧通过 #define 注入（vite-plugin-glsl 不支持，改用固定常量）
+// MAX_SENSORS is a fixed constant here (vite-plugin-glsl does not support #define injection from JS)
 #define MAX_SENSORS 8
 
-// 其他传感器参数（当前传感器自身不包含在内）
+// Parameters of the OTHER sensors (the current sensor itself is not included)
 uniform vec3  uOtherApex[MAX_SENSORS];
-uniform vec3  uOtherDir[MAX_SENSORS];   // 已归一化
-uniform float uOtherTanH[MAX_SENSORS];  // tan(水平半角)
-uniform float uOtherTanV[MAX_SENSORS];  // tan(垂直半角)
-uniform float uOtherRange[MAX_SENSORS]; // 当前有效探测距离（Three.js scene units）
-uniform int   uOtherCount;              // 实际填入的传感器数量（≤ MAX_SENSORS）
+uniform vec3  uOtherDir[MAX_SENSORS];   // normalized
+uniform float uOtherTanH[MAX_SENSORS];  // tan(horizontal half-angle)
+uniform float uOtherTanV[MAX_SENSORS];  // tan(vertical half-angle)
+uniform float uOtherRange[MAX_SENSORS]; // current effective detection distance (scene units)
+uniform int   uOtherCount;              // number of sensors actually filled in (<= MAX_SENSORS)
 
-// 当前波束自身参数（用于自身裁切）
-//   锥面模式（uSelfConeClip=0）：只做球面裁切，锥面不超过探测球
-//   球缺模式（uSelfConeClip=1）：做椭圆锥裁切，球缺只在波束锥角内显示
-uniform vec3  uOwnApex;        // 传感器位置（world space，scene units）
-uniform vec3  uOwnDir;         // 波束方向（已归一化，world space）
-uniform float uOwnTanH;        // tan(水平半角)
-uniform float uOwnTanV;        // tan(垂直半角)
-uniform float uOwnRange;       // 当前有效探测距离（scene units）
-uniform int   uSelfConeClip;   // 0=锥体模式（球面裁切）  1=球缺模式（+锥角裁切）
+// Parameters of the current beam itself (used for self-clipping)
+//   cone mode (uSelfConeClip=0): sphere clip only, so the cone surface never exceeds the detection sphere
+//   cap  mode (uSelfConeClip=1): elliptic-cone clip, so the cap only shows within the beam's cone angle
+uniform vec3  uOwnApex;        // sensor position (world space, scene units)
+uniform vec3  uOwnDir;         // beam direction (normalized, world space)
+uniform float uOwnTanH;        // tan(horizontal half-angle)
+uniform float uOwnTanV;        // tan(vertical half-angle)
+uniform float uOwnRange;       // current effective detection distance (scene units)
+uniform int   uSelfConeClip;   // 0 = cone mode (sphere clip)  1 = cap mode (+ cone-angle clip)
 
-// 当前波束的渲染参数
-uniform float uOpacity;       // 透明度
-uniform vec3  uColor;         // 颜色（由 JS 侧按 proximityRatio 计算后传入）
+// Render parameters of the current beam
+uniform float uOpacity;       // opacity
+uniform vec3  uColor;         // color (computed on the JS side from proximityRatio)
 
 varying vec3 vWorldPos;
 
 /**
- * 构建正交基：forward/right/up。
- * 当 forward 接近 ±Y 时换用 X 轴辅助，防止退化。
- * 与 math.ts buildOrthoBase() 逻辑 1:1 对应。
+ * Build an orthonormal basis: forward/right/up.
+ * When forward is close to ±Y, use the X axis as the helper to avoid degeneracy.
+ * Kept in 1:1 correspondence with buildOrthoBase() in math.ts.
  */
 void buildOrthoBase(
   in  vec3 forward,
@@ -41,37 +41,38 @@ void buildOrthoBase(
 }
 
 /**
- * 判断 worldPos 是否落在第 i 个传感器的"冰淇淋"实体内：
- *   { 椭圆锥内 } ∩ { 到 apex 距离 ≤ range（球缺封口） }
- * 与 math.ts pointInEllipticCone() 逻辑 1:1 对应。
+ * Test whether worldPos lies inside the "ice-cream" solid of the i-th sensor:
+ *   { inside the elliptic cone } ∩ { within distance `range` of the apex (spherical cap) }
+ * Kept in 1:1 correspondence with pointInEllipticCone() in math.ts.
  *
- * 注意两处几何要点：
- *   1. 用椭圆方程 eH²+eV²≤1，而非矩形盒子（dH≤.. && dV≤..）；
- *   2. 末端用球面封口 dot(v,v)≤range²，而非轴向切片 proj≤range。
+ * Two geometry notes:
+ *   1. Use the ellipse equation eH^2 + eV^2 <= 1, not an axis-aligned box (dH <= .. && dV <= ..);
+ *   2. Cap the far end with a sphere: dot(v,v) <= range^2, not the axial slice proj <= range.
  */
 bool insideOtherCone(vec3 p, int i) {
   vec3  v    = p - uOtherApex[i];
   float proj = dot(v, uOtherDir[i]);
-  if (proj <= 0.0) return false;                              // 传感器背后
-  if (dot(v, v) > uOtherRange[i] * uOtherRange[i]) return false; // 超出球缺
+  if (proj <= 0.0) return false;                                 // behind the sensor
+  if (dot(v, v) > uOtherRange[i] * uOtherRange[i]) return false; // beyond the spherical cap
 
   vec3 right, up;
   buildOrthoBase(uOtherDir[i], right, up);
 
   float eH = abs(dot(v, right)) / (proj * uOtherTanH[i]);
   float eV = abs(dot(v, up))    / (proj * uOtherTanV[i]);
-  return eH * eH + eV * eV <= 1.0;                            // 椭圆截面
+  return eH * eH + eV * eV <= 1.0;                               // elliptic cross-section
 }
 
 void main() {
-  // ── 自身裁切
+  // -- Self clipping
   if (uSelfConeClip == 0) {
-    // 锥体侧面：用球面裁切，使锥面在探测球处闭合（与球缺严丝合缝）。
-    // 锥体网格的底沿距 apex 为 range·√(1+tan²)>range，必须裁到 range。
+    // Cone side: clip against the sphere so the cone surface closes exactly on the detection
+    // sphere (flush with the cap). The cone mesh's base rim is at distance range*sqrt(1+tan^2) > range,
+    // so it must be clipped down to range.
     if (length(vWorldPos - uOwnApex) > uOwnRange) discard;
   } else {
-    // 球缺：网格本身即 dist=range 的球面，只需裁到本波束椭圆锥角内。
-    // （不再做球面裁切，避免浮点等值比较在球面上造成孔洞。）
+    // Cap: the mesh is already the sphere at dist=range, so we only clip to this beam's cone angle.
+    // (No sphere clip here, to avoid holes from floating-point equality tests on the sphere.)
     vec3  sv = vWorldPos - uOwnApex;
     float sp = dot(sv, uOwnDir);
     if (sp <= 0.0) discard;
@@ -79,21 +80,21 @@ void main() {
     buildOrthoBase(uOwnDir, sRight, sUp);
     float eH = abs(dot(sv, sRight)) / (sp * uOwnTanH);
     float eV = abs(dot(sv, sUp))    / (sp * uOwnTanV);
-    if (eH * eH + eV * eV > 1.0) discard;                     // 椭圆锥角裁切
+    if (eH * eH + eV * eV > 1.0) discard;                        // elliptic cone-angle clip
   }
 
-  // ── 其他锥体遮挡裁切（正面/背面一律裁切）
-  // 目标：渲染多个波束"并集"的外壳，剔除所有落在其他波束实体内部的表面
-  // （无论正面还是背面）。这样：
-  //   · 相交处内部的分隔壁被剔除（不再出现内部表面）；
-  //   · 凸出到其他锥体之外的外壳被保留（外表面不丢失）。
-  // 依赖 insideOtherCone 的精确椭圆+球缺判定，避免盒子判定过度裁切。
+  // -- Occlusion clipping against other cones (both front and back faces are clipped)
+  // Goal: render the outer shell of the UNION of the beams, discarding every surface that
+  // lies inside another beam's solid (whether front- or back-facing). This means:
+  //   - internal dividing walls at intersections are removed (no more inner surfaces);
+  //   - the shell that pokes outside the other cones is preserved (outer surfaces are kept).
+  // Relies on insideOtherCone's exact ellipse + sphere test to avoid the over-clipping of a box test.
   for (int i = 0; i < MAX_SENSORS; i++) {
     if (i >= uOtherCount) break;
     if (insideOtherCone(vWorldPos, i)) discard;
   }
 
-  // 背面略微减弱，透明叠加时提供深度层次（不影响裁切逻辑）
+  // Back faces are slightly dimmer to give a sense of depth in transparent blending (does not affect clipping)
   float effectiveOpacity = gl_FrontFacing ? uOpacity : uOpacity * 0.6;
   gl_FragColor = vec4(uColor, effectiveOpacity);
 }

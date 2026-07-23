@@ -1,7 +1,7 @@
 name: Publish to npm
 
-# 打 tag（如 v0.1.0）时自动发布到 npm。
-# 需在仓库 Settings → Secrets → Actions 添加 NPM_TOKEN（npm automation token）。
+# Auto-publish to npm when a tag (e.g. v0.1.0) is pushed.
+# Add NPM_TOKEN (an npm automation token) under repo Settings -> Secrets -> Actions.
 on:
   push:
     tags:

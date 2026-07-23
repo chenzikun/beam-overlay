@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { BeamOverlay } from 'beam-overlay'
 import { buildYhsRobot, YHS_SENSOR_DEFS } from './buildYhsRobot'
 
-// ── 场景初始化 ────────────────────────────────────────────────────────────────
+// -- Scene setup ---------------------------------------------------------------
 const canvas = document.getElementById('c') as HTMLCanvasElement
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -24,7 +24,7 @@ controls.maxDistance = 600
 controls.maxPolarAngle = Math.PI / 2.05
 controls.update()
 
-// ── 灯光 ──────────────────────────────────────────────────────────────────────
+// -- Lights --------------------------------------------------------------------
 scene.add(new THREE.AmbientLight(0xffffff, 0.75))
 const key = new THREE.DirectionalLight(0xfff5e8, 1.3)
 key.position.set(-60, 120, -90)
@@ -33,34 +33,34 @@ const fill = new THREE.DirectionalLight(0xd0e4ff, 0.55)
 fill.position.set(90, 40, 70)
 scene.add(fill)
 
-// ── YHS 机器人模型 ────────────────────────────────────────────────────────────
+// -- YHS robot model -----------------------------------------------------------
 const robotGroup = buildYhsRobot()
 scene.add(robotGroup)
 
-// ── 波束 overlay ──────────────────────────────────────────────────────────────
-// 场景 1 unit = 10mm，与 SensorDef 的 mm 单位对应
+// -- Beam overlay --------------------------------------------------------------
+// Scene 1 unit = 10mm, matching the mm unit of SensorDef
 const overlay = new BeamOverlay(YHS_SENSOR_DEFS, { mmPerUnit: 10 })
 scene.add(overlay.group)
 
-// ── 模拟测距数据 ──────────────────────────────────────────────────────────────
-// 每 3s 随机选 2 个传感器更新数值，其余保持不变
+// -- Mock range data -----------------------------------------------------------
+// Every 3s, randomly pick 2 sensors to update; the rest stay unchanged
 const CYCLE_SEC = 3
 const sensorKeys = YHS_SENSOR_DEFS.map(s => s.key)
 
-// 初始固定值：各传感器随机分布在量程中段
+// Initial fixed values: each sensor randomly placed in the mid-range
 const currentReadings: Record<string, number | null> = {}
 sensorKeys.forEach(k => { currentReadings[k] = 500 + Math.random() * 800 })
 
-let cycleTimer = 0   // 距下次更新的倒计时（秒）
+let cycleTimer = 0   // countdown to the next update (seconds)
 
 function stepMock(dt: number): void {
   cycleTimer -= dt
   if (cycleTimer > 0) return
 
-  // 重置计时器
+  // Reset the timer
   cycleTimer = CYCLE_SEC
 
-  // 随机选 2 个不重复的索引
+  // Pick 2 distinct random indices
   const idx1 = Math.floor(Math.random() * sensorKeys.length)
   let idx2 = Math.floor(Math.random() * (sensorKeys.length - 1))
   if (idx2 >= idx1) idx2++
@@ -68,12 +68,12 @@ function stepMock(dt: number): void {
   for (const idx of [idx1, idx2]) {
     const k = sensorKeys[idx]
     const roll = Math.random()
-    // 20% 概率无障碍物，80% 概率随机距离 250~2000mm
+    // 20% chance of no obstacle, 80% chance of a random distance 250~2000mm
     currentReadings[k] = roll < 0.2 ? null : 250 + Math.random() * 1750
   }
 }
 
-// ── 动画循环 ──────────────────────────────────────────────────────────────────
+// -- Animation loop ------------------------------------------------------------
 const clock = new THREE.Clock()
 
 function animate() {
@@ -83,7 +83,7 @@ function animate() {
 
   overlay.tick(dt)
 
-  // 每 3s 只更新 2 个传感器的读数，其余保持稳定
+  // Every 3s update only 2 sensors' readings, the rest stay stable
   stepMock(dt)
   overlay.update(currentReadings)
 
@@ -92,7 +92,7 @@ function animate() {
 
 animate()
 
-// ── 窗口缩放 ──────────────────────────────────────────────────────────────────
+// -- Window resize -------------------------------------------------------------
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight, false)
   camera.aspect = window.innerWidth / window.innerHeight

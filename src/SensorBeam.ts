@@ -5,39 +5,39 @@ import { normalize } from './math'
 import beamVertSrc from './shaders/beam.vert.glsl'
 import beamFragSrc from './shaders/beam.frag.glsl'
 
-/** 单个传感器的三维波束渲染对象（库内部使用，不对外暴露）。 */
+/** Renders a single sensor's 3D beam (library-internal, not exported). */
 export class SensorBeam {
   readonly key: string
   readonly group: THREE.Group
 
   private readonly _def: SensorDef
-  private readonly _dir: Vector3 // 归一化朝向
+  private readonly _dir: Vector3 // normalized direction
   private readonly _tanH: number
   private readonly _tanV: number
-  /** 最小量程（mm，原始值） */
+  /** Minimum range (mm, raw value) */
   private readonly _minRangeMm: number
-  /** 最大量程（mm，原始值） */
+  /** Maximum range (mm, raw value) */
   private readonly _maxRangeMm: number
-  /** scene unit = 1 mm / mmPerUnit（如场景 1 unit=10mm，则 mmPerUnit=10） */
+  /** scene unit = 1 mm / mmPerUnit (e.g. if 1 scene unit = 10mm, mmPerUnit = 10) */
   private readonly _mmPerUnit: number
-  /** 传感器在场景坐标系中的位置（scene units） */
+  /** Sensor position in scene coordinates (scene units) */
   private readonly _scenePos: Vector3
 
-  // Three.js 对象
-  private readonly _coneGroup: THREE.Group // 锥体（缩放到有效距离）
-  private readonly _capGroup: THREE.Group // 球缺（障碍物时显示）
-  private readonly _dotMesh: THREE.Mesh // 传感器指示点
+  // Three.js objects
+  private readonly _coneGroup: THREE.Group // cone (scaled to effective range)
+  private readonly _capGroup: THREE.Group // spherical cap (shown when obstacle present)
+  private readonly _dotMesh: THREE.Mesh // sensor indicator dot
   private readonly _coneMat: THREE.ShaderMaterial
   private readonly _capMat: THREE.ShaderMaterial
 
-  // 动画状态
+  // Animation state
   private _lastState: BeamState
 
   /**
-   * @param def       传感器静态描述（position / maxRangeMm 均为 mm）
-   * @param mmPerUnit 场景单位换算系数：1 scene unit = mmPerUnit mm。
-   *                  默认 1（mm == scene unit）。
-   *                  YHS demo 场景 1 unit=10mm，则传 10。
+   * @param def       Static sensor description (position / maxRangeMm are in mm)
+   * @param mmPerUnit Scene unit scale factor: 1 scene unit = mmPerUnit mm.
+   *                  Default 1 (mm == scene unit).
+   *                  The YHS demo uses 1 unit = 10mm, so it passes 10.
    */
   constructor(def: SensorDef, mmPerUnit = 1) {
     this.key       = def.key
@@ -49,7 +49,7 @@ export class SensorBeam {
     this._minRangeMm = def.minRangeMm ?? 200
     this._maxRangeMm = def.maxRangeMm
 
-    // 位置换算到 scene units
+    // Convert position to scene units
     const inv = 1 / mmPerUnit
     this._scenePos = {
       x: def.position.x * inv,
@@ -57,12 +57,12 @@ export class SensorBeam {
       z: def.position.z * inv,
     }
 
-    // ── 锥体几何（顶点在原点，沿 +Y 展开，depth=1 时底面半径=1）
-    // 缩放 x=s*tanH, y=s, z=s*tanV 得到椭圆锥
+    // -- Cone geometry (apex at origin, opening along +Y; at depth=1 the base radius = 1)
+    // Scaling x=s*tanH, y=s, z=s*tanV turns it into an elliptic cone.
     const coneGeo = new THREE.CylinderGeometry(1, 0, 1, 32, 1, true)
-    coneGeo.translate(0, 0.5, 0) // 顶点移到原点，底面在 y=1
+    coneGeo.translate(0, 0.5, 0) // move apex to origin, base at y=1
 
-    // ── 球缺几何（半径=1，锥顶方向的球帽，thetaLength=水平半角）
+    // -- Spherical cap geometry (radius=1, cap toward the apex axis; thetaLength = horizontal half-angle)
     const capGeo = new THREE.SphereGeometry(
       1,
       32,
@@ -73,7 +73,7 @@ export class SensorBeam {
       (def.beamAngleHDeg * Math.PI) / 180,
     )
 
-    // ── 自身传感器基础参数（场景坐标系，scene units）
+    // -- Own sensor base parameters (scene coordinates, scene units)
     const ownApex = new THREE.Vector3(
       def.position.x / mmPerUnit,
       def.position.y / mmPerUnit,
@@ -81,24 +81,24 @@ export class SensorBeam {
     )
     const ownDir  = new THREE.Vector3(this._dir.x, this._dir.y, this._dir.z)
 
-    // ── ShaderMaterial（锥体 + 球缺共享 uniforms 结构，各自独立实例）
-    // selfConeClip: 0=锥体（球面裁切）  1=球缺（+椭圆锥角裁切）
+    // -- ShaderMaterial (cone + cap share the uniforms structure, but each has its own instance)
+    // selfConeClip: 0 = cone (sphere clip)  1 = cap (+ elliptic cone-angle clip)
     const makeUniforms = (selfConeClip: 0 | 1) => ({
-      // 其他传感器遮挡参数
+      // Occlusion parameters of other sensors
       uOtherApex:  { value: Array(MAX_SENSORS).fill(null).map(() => new THREE.Vector3()) },
       uOtherDir:   { value: Array(MAX_SENSORS).fill(null).map(() => new THREE.Vector3()) },
       uOtherTanH:  { value: new Float32Array(MAX_SENSORS) },
       uOtherTanV:  { value: new Float32Array(MAX_SENSORS) },
       uOtherRange: { value: new Float32Array(MAX_SENSORS) },
       uOtherCount: { value: 0 },
-      // 自身传感器参数（自身球面裁切 + 球缺锥角裁切）
+      // Own sensor parameters (own sphere clip + cap cone-angle clip)
       uOwnApex:      { value: ownApex.clone() },
       uOwnDir:       { value: ownDir.clone() },
       uOwnTanH:      { value: this._tanH },
       uOwnTanV:      { value: this._tanV },
-      uOwnRange:     { value: 0 },            // 每帧在 applyReading 中更新
+      uOwnRange:     { value: 0 },            // updated per frame in applyReading
       uSelfConeClip: { value: selfConeClip },
-      // 渲染参数
+      // Render parameters
       uColor:   { value: new THREE.Color(0x29aaff) },
       uOpacity: { value: 0.2 },
     })
@@ -108,7 +108,7 @@ export class SensorBeam {
       fragmentShader: beamFragSrc,
       transparent: true,
       depthWrite: false,
-      side: THREE.DoubleSide,   // 锥体/球缺均用双面：正面=外表面(始终可见)，背面=内表面(重叠时裁切)
+      side: THREE.DoubleSide,   // both cone/cap use double-side: front = outer surface (always visible), back = inner surface (culled on overlap)
       blending: THREE.NormalBlending,
     }
 
@@ -118,7 +118,7 @@ export class SensorBeam {
       uniforms: makeUniforms(1),
     })
 
-    // ── Group 层级
+    // -- Group hierarchy
     this._coneGroup = new THREE.Group()
     this._coneGroup.add(new THREE.Mesh(coneGeo, this._coneMat))
 
@@ -126,7 +126,7 @@ export class SensorBeam {
     this._capGroup.add(new THREE.Mesh(capGeo, this._capMat))
     this._capGroup.visible = false
 
-    // ── 传感器指示点（固定小球，不参与 shader 裁切）
+    // -- Sensor indicator dot (fixed small sphere, not affected by shader clipping)
     const dotGeo = new THREE.SphereGeometry(2.2, 8, 6)
     const dotMat = new THREE.MeshStandardMaterial({
       color: 0x4fc3f7,
@@ -135,13 +135,13 @@ export class SensorBeam {
     })
     this._dotMesh = new THREE.Mesh(dotGeo, dotMat)
 
-    // ── coneGroup 旋转对齐传感器朝向
-    // Three.js CylinderGeometry 沿 +Y，需旋转到 dir 方向
+    // -- Rotate coneGroup to align with the sensor direction.
+    // Three.js CylinderGeometry points along +Y, so rotate it to `dir`.
     const yAxis = new THREE.Vector3(0, 1, 0)
     const dirV3 = new THREE.Vector3(this._dir.x, this._dir.y, this._dir.z)
     const quat = new THREE.Quaternion().setFromUnitVectors(yAxis, dirV3)
 
-    // 所有 Three.js 对象位置使用 scene units
+    // All Three.js object positions use scene units
     const sp = this._scenePos
     this._coneGroup.position.set(sp.x, sp.y, sp.z)
     this._coneGroup.quaternion.copy(quat)
@@ -151,13 +151,13 @@ export class SensorBeam {
 
     this._dotMesh.position.set(sp.x, sp.y, sp.z)
 
-    // ── 父 Group（挂入宿主 scene）
+    // -- Parent Group (added to the host scene)
     this.group = new THREE.Group()
     this.group.add(this._coneGroup)
     this.group.add(this._capGroup)
     this.group.add(this._dotMesh)
 
-    // ── 初始状态
+    // -- Initial state
     this._lastState = {
       key: this.key,
       hasObstacle: false,
@@ -168,13 +168,13 @@ export class SensorBeam {
   }
 
   /**
-   * 根据最新测距值更新几何缩放和颜色 uniforms。
-   * @param rangeMm 测距值（mm），null = 无障碍物
-   * @param t       累计时间（秒），用于脉动动画
-   * @returns 当前帧的 BeamState
+   * Update geometry scale and color uniforms from the latest range reading.
+   * @param rangeMm Range reading (mm), null = no obstacle
+   * @param t       Accumulated time (seconds), used for the pulsing animation
+   * @returns The BeamState for the current frame
    */
   applyReading(rangeMm: number | null, t: number): BeamState {
-    // 所有比较和插值在 mm 域完成，保证 API 语义（mm）正确
+    // All comparisons and interpolation happen in the mm domain to keep API semantics (mm) correct
     const hasObstacle = rangeMm !== null && rangeMm < this._maxRangeMm
     const distMm = hasObstacle
       ? Math.min(Math.max(rangeMm!, this._minRangeMm), this._maxRangeMm)
@@ -184,17 +184,17 @@ export class SensorBeam {
     const cr = ratio > 0.5 ? 1 - (ratio - 0.5) * 2 : 1
     const cg = ratio > 0.5 ? 1 : ratio * 2
 
-    // 换算到 scene units 做几何缩放（1 scene unit = mmPerUnit mm）
+    // Convert to scene units for geometry scaling (1 scene unit = mmPerUnit mm)
     const s = distMm / this._mmPerUnit
 
     if (hasObstacle) {
-      // 锥体缩放到障碍物距离，颜色绿→黄→红
+      // Scale the cone to the obstacle distance; color goes green -> yellow -> red
       this._coneGroup.scale.set(s * this._tanH, s, s * this._tanV)
       this._coneMat.uniforms.uOwnRange.value = s
       this._coneMat.uniforms.uColor.value.setRGB(cr, cg, 0)
       this._coneMat.uniforms.uOpacity.value = 0.22 + 0.13 * (1 - ratio)
 
-      // 球缺：均匀缩放为真球（半径=s），由 shader 裁切到椭圆锥角范围内
+      // Cap: uniform scale into a true sphere (radius = s); the shader clips it to the elliptic cone angle
       this._capGroup.scale.set(s, s, s)
       this._capMat.uniforms.uOwnRange.value = s
       this._capGroup.visible = true
@@ -202,7 +202,7 @@ export class SensorBeam {
       const pulseHz = 1.5 + (1 - ratio) * 7
       this._capMat.uniforms.uOpacity.value = 0.5 + 0.35 * Math.abs(Math.sin(t * pulseHz))
     } else {
-      // 无障碍物：蓝色展开至最大量程（最大限位），微弱呼吸动画
+      // No obstacle: blue, expanded to max range (the limit), with a faint breathing animation
       this._coneGroup.scale.set(s * this._tanH, s, s * this._tanV)
       this._coneMat.uniforms.uOwnRange.value = s
       this._coneMat.uniforms.uColor.value.setRGB(0.16, 0.67, 1)
@@ -211,11 +211,11 @@ export class SensorBeam {
       this._capGroup.visible = false
     }
 
-    // 指示点脉动
+    // Indicator dot pulsing
     const dotMat = this._dotMesh.material as THREE.MeshStandardMaterial
     dotMat.emissiveIntensity = 0.12 + 0.28 * Math.abs(Math.sin(t * 0.85))
 
-    // 障碍物点坐标（mm，与 SensorDef.position 单位一致）
+    // Obstacle point coordinates (mm, same unit as SensorDef.position)
     const obstaclePoint = hasObstacle
       ? {
           x: this._def.position.x + this._dir.x * distMm,
@@ -227,7 +227,7 @@ export class SensorBeam {
     this._lastState = {
       key: this.key,
       hasObstacle,
-      effectiveRangeMm: distMm,   // 真实 mm，与 API 语义一致
+      effectiveRangeMm: distMm,   // real mm, consistent with the API semantics
       proximityRatio: ratio,
       obstaclePoint,
     }
@@ -235,8 +235,8 @@ export class SensorBeam {
   }
 
   /**
-   * 将其他传感器的当前参数写入本 beam 的 shader uniforms。
-   * 每帧在 applyReading 之后调用。
+   * Write the current parameters of the other sensors into this beam's shader uniforms.
+   * Call every frame after applyReading.
    */
   setOtherSensors(others: SensorBeam[]): void {
     const count = Math.min(others.length, MAX_SENSORS)
@@ -245,14 +245,14 @@ export class SensorBeam {
       const u = mat.uniforms
       for (let i = 0; i < count; i++) {
         const o = others[i]
-        // shader 在 scene 坐标系中做世界空间裁切，必须使用 scene units
+        // The shader clips in world (scene) space, so values must be in scene units
         const p = o._scenePos
         const d = o._dir
         u.uOtherApex.value[i].set(p.x, p.y, p.z)
         u.uOtherDir.value[i].set(d.x, d.y, d.z)
         ;(u.uOtherTanH.value as Float32Array)[i] = o._tanH
         ;(u.uOtherTanV.value as Float32Array)[i] = o._tanV
-        // effectiveRangeMm 是真实 mm，换算为 scene units 传入 shader
+        // effectiveRangeMm is real mm; convert to scene units before passing to the shader
         ;(u.uOtherRange.value as Float32Array)[i] = o._lastState.effectiveRangeMm / o._mmPerUnit
       }
       u.uOtherCount.value = count

@@ -1,26 +1,28 @@
 import type { SensorDef } from './types'
 
 /**
- * 波束形状预设：只描述「探测体的形状」，不含 key / position / direction。
- * 用 {@link withPreset} 展开成完整 SensorDef。
+ * Beam shape preset: describes only the "shape of the detection volume",
+ * without key / position / direction. Use {@link withPreset} to expand it
+ * into a complete SensorDef.
  */
 export interface BeamPreset {
-  /** 水平半角（度） */
+  /** Horizontal half-angle (degrees) */
   beamAngleHDeg: number
-  /** 垂直半角（度） */
+  /** Vertical half-angle (degrees) */
   beamAngleVDeg: number
-  /** 最小量程（mm） */
+  /** Minimum range (mm) */
   minRangeMm: number
-  /** 最大量程（mm） */
+  /** Maximum range (mm) */
   maxRangeMm: number
 }
 
 /**
- * 典型超声波测距传感器预设。
- * 水平较宽(45°)、垂直较窄(20°)，量程 0.25–1.0m —— 与本项目机型（YHS 等）默认一致。
+ * Typical ultrasonic range-sensor preset.
+ * Wide horizontally (45°), narrow vertically (20°), range 0.25–1.0m — matching the
+ * defaults of this project's robots (e.g. YHS).
  *
- * 本库本身与传感器类型无关，此预设仅为常见场景提供便捷默认值。
- * 需要毫米波雷达/红外/ToF 等其他形状时，自行定义 BeamPreset 即可。
+ * The library itself is sensor-type agnostic; this preset only provides convenient
+ * defaults for a common case. For mmWave radar / IR / ToF etc., define your own BeamPreset.
  */
 export const ULTRASONIC_PRESET: BeamPreset = {
   beamAngleHDeg: 45,
@@ -30,9 +32,10 @@ export const ULTRASONIC_PRESET: BeamPreset = {
 }
 
 /**
- * 用波束形状预设补全传感器定义。
- * 调用方只需给出 key / position / direction，形状参数由 preset 提供；
- * 任意字段都可通过 overrides 覆盖（如单独调大某个传感器的量程）。
+ * Complete a sensor definition from a beam-shape preset.
+ * The caller only needs to provide key / position / direction; the shape parameters
+ * come from the preset. Any field can be overridden via `overrides`
+ * (e.g. bump the range of one specific sensor).
  *
  * @example
  * const defs = sensors.map(s => withPreset(ULTRASONIC_PRESET, s))

@@ -1,4 +1,4 @@
-// 输出每个顶点的世界坐标，供 fragment shader 做锥内点测试
+// Output each vertex's world position for the fragment shader's cone-membership test
 varying vec3 vWorldPos;
 
 void main() {

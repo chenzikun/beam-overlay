@@ -4,13 +4,14 @@ import { MAX_SENSORS } from './types'
 import { SensorBeam } from './SensorBeam'
 
 /**
- * 方向性距离传感器探测体的 3D 叠加可视化。
+ * 3D overlay visualization of directional range-sensor detection volumes.
  *
- * 每个传感器渲染为「椭圆锥 + 球缺」实体（探测波束），多个波束重叠时
- * 通过 GLSL 逐片元裁切剔除内部表面，只保留并集外壳，从而高亮危险区。
+ * Each sensor is rendered as an "elliptic cone + spherical cap" solid (its detection beam).
+ * When multiple beams overlap, a GLSL per-fragment cull removes the inner surfaces so that
+ * only the outer shell of the union remains, highlighting the danger zone.
  *
- * 与具体传感器类型无关：超声波、毫米波雷达、红外测距、ToF 等均可使用。
- * 常见传感器的波束形状预设见 {@link ./presets}（如 ULTRASONIC_PRESET）。
+ * Sensor-type agnostic: ultrasonic, mmWave radar, IR range finders, ToF, etc. all work.
+ * See {@link ./presets} for common beam-shape presets (e.g. ULTRASONIC_PRESET).
  */
 export class BeamOverlay {
   readonly group: THREE.Group
@@ -20,14 +21,14 @@ export class BeamOverlay {
   private _lastFrame: FrameData
 
   /**
-   * @param sensors   传感器描述列表（position / maxRangeMm 均为 mm）
-   * @param options.mmPerUnit  场景换算系数：1 scene unit = mmPerUnit mm。
-   *                           默认 1（mm == scene unit，适合直接用 mm 建模的场景）。
-   *                           若场景 1 unit = 10mm，则传 { mmPerUnit: 10 }。
+   * @param sensors   List of sensor descriptions (position / maxRangeMm are in mm)
+   * @param options.mmPerUnit  Scene scale factor: 1 scene unit = mmPerUnit mm.
+   *                           Default 1 (mm == scene unit, for scenes modeled directly in mm).
+   *                           If your scene has 1 unit = 10mm, pass { mmPerUnit: 10 }.
    */
   constructor(sensors: SensorDef[], options?: { mmPerUnit?: number }) {
     if (sensors.length > MAX_SENSORS) {
-      console.warn(`[beam-overlay] 传感器数量 ${sensors.length} 超过 MAX_SENSORS=${MAX_SENSORS}，超出部分将被忽略`)
+      console.warn(`[beam-overlay] sensor count ${sensors.length} exceeds MAX_SENSORS=${MAX_SENSORS}; extras will be ignored`)
     }
 
     const mmPerUnit = options?.mmPerUnit ?? 1
@@ -35,7 +36,7 @@ export class BeamOverlay {
     this.group  = new THREE.Group()
     this._beams.forEach(b => this.group.add(b.group))
 
-    // 初始帧（无读数）
+    // Initial frame (no readings)
     this._lastFrame = {
       beams: this._beams.map(b => b.applyReading(null, 0)),
     }
@@ -43,8 +44,8 @@ export class BeamOverlay {
   }
 
   /**
-   * 传入最新测距数据，更新所有波束的几何缩放、颜色和裁切 uniforms。
-   * 在宿主 requestAnimationFrame 循环内每帧调用。
+   * Feed the latest range data to update every beam's geometry scale, color and clip uniforms.
+   * Call every frame inside the host requestAnimationFrame loop.
    */
   update(readings: Readings): void {
     const beamStates = this._beams.map(beam =>
@@ -55,24 +56,24 @@ export class BeamOverlay {
   }
 
   /**
-   * 驱动脉动/扫描等时间相关动画。
-   * 在宿主动画循环内每帧调用，dt 单位：秒。
+   * Drive time-based animations (pulsing, sweeping, etc.).
+   * Call every frame inside the host animation loop. dt is in seconds.
    */
   tick(dt: number): void {
-    this._t += Math.min(dt, 0.05)  // 防止 tab 切换后时间跳变
+    this._t += Math.min(dt, 0.05)  // clamp to avoid time jumps after a tab switch
   }
 
-  /** 返回上一次 update() 的计算结果 */
+  /** Returns the computed result of the last update() call */
   getFrameData(): FrameData {
     return this._lastFrame
   }
 
-  /** 释放所有 GPU 资源（场景销毁时调用） */
+  /** Release all GPU resources (call when the scene is destroyed) */
   dispose(): void {
     this._beams.forEach(b => b.dispose())
   }
 
-  /** 将所有其他传感器的参数同步到每个 beam 的 shader uniforms */
+  /** Sync every other sensor's parameters into each beam's shader uniforms */
   private _syncOtherUniforms(): void {
     for (let i = 0; i < this._beams.length; i++) {
       const others = this._beams.filter((_, j) => j !== i)

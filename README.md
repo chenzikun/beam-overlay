@@ -3,132 +3,138 @@
 [![npm version](https://img.shields.io/npm/v/beam-overlay.svg)](https://www.npmjs.com/package/beam-overlay)
 [![license](https://img.shields.io/npm/l/beam-overlay.svg)](./LICENSE)
 
-方向性距离传感器**探测体**的 Three.js 3D 叠加可视化库。
+A Three.js library for visualizing the **detection volumes of directional range sensors** in 3D.
 
-每个传感器渲染为「椭圆锥 + 球缺」实体（探测波束），多个波束重叠时通过 GLSL
-fragment shader **逐片元裁切内部表面**，只保留并集外壳，从而高亮危险区。
+Each sensor is rendered as an "elliptic cone + spherical cap" solid (its detection beam).
+When multiple beams overlap, a GLSL fragment shader performs **per-fragment surface culling**
+so that only the outer shell of the union remains — highlighting the danger zone where
+obstacles are close.
 
-与具体传感器类型无关——超声波、毫米波雷达、红外测距、ToF 等均可使用；
-`ULTRASONIC_PRESET` 只是内置的一个便捷波束形状预设。
+It is **sensor-type agnostic**: ultrasonic, mmWave radar, IR range finders, ToF, etc.
+`ULTRASONIC_PRESET` is just a built-in convenience preset for a common beam shape.
 
-## 安装
+![beam-overlay demo — YHS robot with ultrasonic beams](./sample.png)
+
+## Install
 
 ```bash
 npm install beam-overlay
-# three 为 peerDependency，需自行安装
+# three is a peerDependency, install it yourself
 npm install three
 ```
 
-## 使用
+## Usage
 
 ```ts
 import * as THREE from 'three'
 import { BeamOverlay, ULTRASONIC_PRESET, withPreset } from 'beam-overlay'
 
-// 方式一：完整手写 SensorDef
+// Option 1: write full SensorDef objects
 const overlay = new BeamOverlay([
   {
     key: 'front_left',
-    position:       { x: -150, y: 500, z: -362 },  // mm，Y轴朝上
+    position:       { x: -150, y: 500, z: -362 },  // mm, Y is up
     direction:      { x: 0, y: 0, z: -1 },
     beamAngleHDeg:  45,
     beamAngleVDeg:  20,
     minRangeMm:     250,
     maxRangeMm:     1000,
   },
-  // ... 最多 8 个传感器
+  // ... up to 8 sensors
 ])
 
-// 方式二：用预设补全形状，只写 key/position/direction（推荐）
+// Option 2: fill the beam shape from a preset, only write key/position/direction (recommended)
 const sensors = [
   { key: 'front_left',  position: { x: -150, y: 500, z: -362 }, direction: { x: 0, y: 0, z: -1 } },
   { key: 'front_right', position: { x:  150, y: 500, z: -362 }, direction: { x: 0, y: 0, z: -1 } },
 ].map(s => withPreset(ULTRASONIC_PRESET, s))
 const overlay2 = new BeamOverlay(sensors)
 
-scene.add(overlay.group)  // 与机器人模型挂入同一 scene，坐标系对齐
+scene.add(overlay.group)  // add to the same scene as your robot model, coordinate systems must align
 
-// 宿主动画循环
+// Host animation loop
 function animate() {
   requestAnimationFrame(animate)
   const dt = clock.getDelta()
 
   overlay.tick(dt)
   overlay.update({
-    front_left:  820,   // mm，检测到障碍物
-    front_right: null,  // 无障碍物
+    front_left:  820,   // mm, obstacle detected
+    front_right: null,  // no obstacle
   })
 
   renderer.render(scene, camera)
 }
 
-// 销毁时释放 GPU 资源
+// Release GPU resources on teardown
 overlay.dispose()
 ```
 
-> 若场景单位不是 mm（如 1 unit = 10mm），传入 `new BeamOverlay(sensors, { mmPerUnit: 10 })`。
+> If your scene unit is not mm (e.g. 1 unit = 10mm), pass `new BeamOverlay(sensors, { mmPerUnit: 10 })`.
 
 ## API
 
 ### `new BeamOverlay(sensors: SensorDef[], options?: { mmPerUnit?: number })`
 
-- `sensors`：传感器定义数组（最多 8 个，`MAX_SENSORS`）
-- `options.mmPerUnit`：场景换算系数，1 scene unit = mmPerUnit mm，默认 1
+- `sensors`: array of sensor definitions (up to 8, see `MAX_SENSORS`)
+- `options.mmPerUnit`: scene scale factor, 1 scene unit = mmPerUnit mm (default 1)
 
 ### `overlay.group: THREE.Group`
 
-挂入宿主 `scene` 的节点，包含所有波束几何体。
+The node to add to your host `scene`; contains all beam geometry.
 
 ### `overlay.tick(dt: number): void`
 
-每帧调用，驱动脉动动画。`dt` 单位：秒。
+Call every frame to drive the pulsing animation. `dt` is in seconds.
 
 ### `overlay.update(readings: Readings): void`
 
-传入最新测距数据更新渲染。`readings` 的 key 对应 `SensorDef.key`，值为距离 mm 或 `null`（无障碍物）。
+Feed the latest range readings to update the rendering. `readings` keys map to
+`SensorDef.key`; values are distances in mm, or `null` for "no obstacle".
 
 ### `overlay.getFrameData(): FrameData`
 
-返回当前帧的计算结果（用于业务逻辑消费）。
+Returns the computed result of the current frame (for business logic to consume).
 
 ### `overlay.dispose(): void`
 
-释放所有 GPU 资源。
+Releases all GPU resources.
 
-### 预设
+### Presets
 
-- `ULTRASONIC_PRESET: BeamPreset` — 典型超声波波束形状（H45°/V20°，量程 0.25–1.0m）
-- `withPreset(preset, { key, position, direction, ...overrides }): SensorDef` — 用预设补全形状参数，任意字段可覆盖
+- `ULTRASONIC_PRESET: BeamPreset` — a typical ultrasonic beam shape (H 45° / V 20°, range 0.25–1.0m)
+- `withPreset(preset, { key, position, direction, ...overrides }): SensorDef` — fill beam-shape
+  fields from a preset; any field can be overridden.
 
-## 坐标系
+## Coordinate system
 
-- 单位：毫米（mm）
-- 坐标系：右手系，Y 轴朝上（与 Three.js 默认一致）
-- 调用方负责将 `position` 与机器人模型坐标系对齐
+- Unit: millimeters (mm)
+- Right-handed, Y-up (matching the Three.js default)
+- The caller is responsible for aligning `position` with the robot model's coordinate system
 
-## 示例（Demo）
+## Example (Demo)
 
-`examples/yhs-demo` 是一个用 Three.js 渲染 YHS 机器人 + 6 路超声波波束叠加的完整示例。
+`examples/yhs-demo` is a full example rendering a YHS robot plus 6 overlapping ultrasonic beams.
 
 ```bash
-# 先构建库（demo 通过 file:../.. 引用构建产物）
+# Build the library first (the demo references the build output via file:../..)
 npm install
 npm run build
 
-# 运行 demo
+# Run the demo
 cd examples/yhs-demo
 npm install
 npm run dev
 ```
 
-## 开发
+## Development
 
 ```bash
 npm install
-npm test          # vitest 单元测试
-npm run build     # 构建 dist + 类型声明
+npm test          # vitest unit tests
+npm run build     # build dist + type declarations
 ```
 
 ## License
 
-[MIT](./LICENSE) © zicorn
+[MIT](./LICENSE) © chenzikun

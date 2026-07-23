@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { ULTRASONIC_PRESET, withPreset } from 'beam-overlay'
 
-// 1 unit = 10mm（与 AnimatedRobotYhs.vue 一致）
+// 1 unit = 10mm
 const DIM = {
   bodyW: 51.5, bodyH: 44,   bodyD: 72.5,
   headW: 51.5, headH: 46,   headD: 18,
@@ -50,19 +50,18 @@ function buildHeadGeo(): THREE.ExtrudeGeometry {
 }
 
 /**
- * 构建 YHS 机器人程序化 Three.js 模型。
- * 与 AnimatedRobotYhs.vue buildRobot() 视觉完全一致，但去掉所有 Vue/store 依赖。
- * @returns robotGroup — 直接 scene.add() 即可
+ * Build the procedural Three.js model of the YHS robot.
+ * @returns robotGroup — ready to scene.add()
  */
 export function buildYhsRobot(): THREE.Group {
   const robotGroup = new THREE.Group()
 
-  // 地面网格
+  // Ground grid
   const grid = new THREE.GridHelper(400, 20, 0x1a2f4a, 0x0e1d2e)
   grid.position.y = 0.05
   robotGroup.add(grid)
 
-  // 阴影椭圆
+  // Shadow ellipse
   const shadow = new THREE.Mesh(
     new THREE.CircleGeometry(1, 32),
     new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.28, depthWrite: false }),
@@ -72,7 +71,7 @@ export function buildYhsRobot(): THREE.Group {
   shadow.position.set(0, 0.15, 5)
   robotGroup.add(shadow)
 
-  // 车身上部
+  // Upper body
   const upperH = DIM.bodyH - CHASSIS_H
   const bodyMesh = new THREE.Mesh(
     new THREE.BoxGeometry(DIM.bodyW, upperH, DIM.bodyD),
@@ -81,7 +80,7 @@ export function buildYhsRobot(): THREE.Group {
   bodyMesh.position.set(0, CHASSIS_H + upperH / 2, 0)
   robotGroup.add(bodyMesh)
 
-  // 车头衔接装饰条
+  // Head junction trim strip
   const junction = new THREE.Mesh(
     new THREE.BoxGeometry(DIM.headW, 1.2, DIM.headD),
     glowMat(C.accent, 0.12),
@@ -89,7 +88,7 @@ export function buildYhsRobot(): THREE.Group {
   junction.position.set(0, bodyTop + 0.6, headCenterZ)
   robotGroup.add(junction)
 
-  // 车头（带倒角）
+  // Head (chamfered)
   const headMesh = new THREE.Mesh(buildHeadGeo(), mkMat(C.head, {
     metalness: 0.10, roughness: 0.42, side: THREE.DoubleSide,
   }))
@@ -97,7 +96,7 @@ export function buildYhsRobot(): THREE.Group {
   headMesh.position.set(0, bodyTop, 0)
   robotGroup.add(headMesh)
 
-  // 车头蓝条
+  // Head blue strip
   const headStrip = new THREE.Mesh(
     new THREE.BoxGeometry(DIM.headW * 0.65, 2.5, 0.5),
     glowMat(C.accent, 0.22),
@@ -105,7 +104,7 @@ export function buildYhsRobot(): THREE.Group {
   headStrip.position.set(0, bodyTop + DIM.headH * 0.36, headFrontZ - 0.3)
   robotGroup.add(headStrip)
 
-  // 激光雷达底座 + 雷达
+  // Lidar base + lidar
   const lidarBaseY = headTop + 1
   const lidarBase = new THREE.Mesh(
     new THREE.CylinderGeometry(DIM.lidarR + 1, DIM.lidarR + 1.5, 2, 16),
@@ -121,7 +120,7 @@ export function buildYhsRobot(): THREE.Group {
   lidarMesh.position.set(0, lidarBaseY + 1 + DIM.lidarH / 2, headCenterZ)
   robotGroup.add(lidarMesh)
 
-  // 四轮
+  // Four wheels
   const wheelGeo = new THREE.CylinderGeometry(DIM.wheelR, DIM.wheelR, DIM.wheelT, 32)
   const hubGeo   = new THREE.CylinderGeometry(7.5, 7.5, DIM.wheelT + 1, 6)
   for (const p of [
@@ -142,19 +141,19 @@ export function buildYhsRobot(): THREE.Group {
 }
 
 /**
- * YHS 6 个超声波传感器的默认描述。
- * position 单位：mm（SensorDef API 规范）；1 scene unit = 10mm，由 BeamOverlay mmPerUnit:10 换算。
- * DIM 常量单位为 scene units，×10 得 mm。
+ * Default descriptions of the YHS robot's 6 ultrasonic sensors.
+ * position unit: mm (per the SensorDef API); 1 scene unit = 10mm, converted by BeamOverlay mmPerUnit:10.
+ * DIM constants are in scene units, so ×10 gives mm.
  */
 export const YHS_SENSOR_DEFS = (() => {
   const F = 0.7071
   const usChamferX = (DIM.headW / 2 - DIM.chamfer + DIM.headW / 2) / 2  // scene units ≈21.75
   const usChamferZ = (headFrontZ + headFrontZ + DIM.chamfer) / 2          // scene units ≈-32.25
-  /** scene units → mm */
+  /** scene units -> mm */
   const mm = (v: number) => v * 10
 
-  // 只描述每个传感器的 key/position/direction，波束形状由 ULTRASONIC_PRESET 提供
-  // （量程 0.25–1.0m，与 robot.ts usMin/MaxRangeMm 默认值一致）
+  // Only describe each sensor's key/position/direction; the beam shape comes from ULTRASONIC_PRESET
+  // (range 0.25–1.0m).
   return [
     { key: 'right_rear',  position: { x: mm(-15),          y: mm(52), z: mm(headFrontZ - 1)      }, direction: { x:  0, y: 0, z: -1 } },
     { key: 'rear_right',  position: { x: mm( 15),          y: mm(52), z: mm(headFrontZ - 1)      }, direction: { x:  0, y: 0, z: -1 } },

@@ -1,4 +1,4 @@
-/** 三维向量（不依赖 Three.js） */
+/** 3D vector (no Three.js dependency) */
 export interface Vector3 {
   x: number
   y: number
@@ -6,68 +6,68 @@ export interface Vector3 {
 }
 
 /**
- * 多波束裁切支持的最大「其他传感器」数量。
- * 须与 `shaders/beam.frag.glsl` 中的 `#define MAX_SENSORS` 保持一致。
+ * Maximum number of "other sensors" supported for multi-beam clipping.
+ * Must match `#define MAX_SENSORS` in `shaders/beam.frag.glsl`.
  */
 export const MAX_SENSORS = 8 as const
 
 /**
- * 单个传感器的静态描述。
- * 初始化时传入 BeamOverlay，之后不可变。
+ * Static description of a single sensor.
+ * Passed to BeamOverlay at construction time; immutable afterward.
  */
 export interface SensorDef {
-  /** 唯一标识，与 Readings 的 key 对应 */
+  /** Unique identifier, matching a key in Readings */
   key: string
-  /** 传感器世界坐标（mm） */
+  /** Sensor world position (mm) */
   position: Vector3
   /**
-   * 探测朝向（构造函数内自动归一化，调用方无需预处理）。
-   * Y 轴朝上的右手坐标系，与 Three.js 默认一致。
+   * Detection direction (normalized inside the constructor, no need to pre-normalize).
+   * Right-handed, Y-up coordinate system, matching the Three.js default.
    */
   direction: Vector3
-  /** 水平半角（度），典型值 45 */
+  /** Horizontal half-angle (degrees), typically 45 */
   beamAngleHDeg: number
-  /** 垂直半角（度），典型值 20 */
+  /** Vertical half-angle (degrees), typically 20 */
   beamAngleVDeg: number
-  /** 最大量程（mm），典型值 2450 */
+  /** Maximum range (mm), typically 2450 */
   maxRangeMm: number
-  /** 最小量程（mm），默认 200 */
+  /** Minimum range (mm), default 200 */
   minRangeMm?: number
 }
 
 /**
- * 每帧传入的测距数据。
- * key 与 SensorDef.key 对应。
- * null  = 无障碍物 / 超出量程 / 无信号
- * number = 障碍物距离（mm，正数）
+ * Range data fed in each frame.
+ * Keys map to SensorDef.key.
+ * null   = no obstacle / out of range / no signal
+ * number = obstacle distance (mm, positive)
  */
 export type Readings = Record<string, number | null>
 
-/** 单个波束当前帧的计算结果 */
+/** Computed result for a single beam in the current frame */
 export interface BeamState {
   key: string
-  /** 是否命中障碍物 */
+  /** Whether an obstacle was hit */
   hasObstacle: boolean
   /**
-   * 当前有效探测距离（mm）。
-   * hasObstacle=false 时等于 maxRangeMm。
+   * Current effective detection distance (mm).
+   * Equals maxRangeMm when hasObstacle is false.
    */
   effectiveRangeMm: number
   /**
-   * 接近度比值 [0, 1]。
-   * 0 = 极近（危险，颜色映射为红），1 = 最远（安全，映射为绿）。
-   * hasObstacle=false 时为 1。
+   * Proximity ratio in [0, 1].
+   * 0 = very close (dangerous, mapped to red), 1 = farthest (safe, mapped to green).
+   * Equals 1 when hasObstacle is false.
    */
   proximityRatio: number
   /**
-   * 障碍物点世界坐标（mm）。
+   * Obstacle point in world coordinates (mm).
    * = position + normalize(direction) * effectiveRangeMm
-   * hasObstacle=false 时为 null。
+   * null when hasObstacle is false.
    */
   obstaclePoint: Vector3 | null
 }
 
-/** update() 后可通过 getFrameData() 获取的当前帧计算结果 */
+/** Current-frame computed result, available via getFrameData() after update() */
 export interface FrameData {
   beams: BeamState[]
 }
