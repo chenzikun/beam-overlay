@@ -1,7 +1,11 @@
 name: Publish to npm
 
-# Auto-publish to npm when a tag (e.g. v0.1.0) is pushed.
-# Add NPM_TOKEN (an npm automation token) under repo Settings -> Secrets -> Actions.
+# Auto-publish to npm when a tag (e.g. v0.1.1) is pushed.
+# One-time setup: add NPM_TOKEN (an npm automation token) under
+# repo Settings -> Secrets and variables -> Actions.
+#
+# Release flow (never publish locally):
+#   npm version patch && git push --follow-tags
 on:
   push:
     tags:
@@ -21,6 +25,19 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: npm
       - run: npm ci
+
+      # Guard: the pushed tag (vX.Y.Z) must match the version in package.json.
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      - run: npm test
+      - run: npm run build
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

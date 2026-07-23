@@ -17,6 +17,8 @@ It is **sensor-type agnostic**: ultrasonic, mmWave radar, IR range finders, ToF,
 
 ## Install
 
+npm package: **https://www.npmjs.com/package/beam-overlay**
+
 ```bash
 npm install beam-overlay
 # three is a peerDependency, install it yourself
@@ -134,6 +136,21 @@ npm run dev
 npm install
 npm test          # vitest unit tests
 npm run build     # build dist + type declarations
+```
+
+## Releasing
+
+Publishing to npm is fully automated via GitHub Actions — **never run `npm publish` locally**.
+The only trigger is pushing a `v*` tag; CI then builds, tests, and publishes with provenance.
+
+One-time setup: add an npm **automation token** as the `NPM_TOKEN` repository secret
+(Settings → Secrets and variables → Actions).
+
+To cut a release:
+
+```bash
+npm version patch      # or minor / major — bumps package.json, commits, creates tag vX.Y.Z
+git push --follow-tags # pushes the commit and the tag; the tag triggers the publish workflow
 ```
 
 ## License
