@@ -1,4 +1,6 @@
-// MAX_SENSORS is a fixed constant here (vite-plugin-glsl does not support #define injection from JS)
+// MAX_SENSORS is replaced at runtime by SensorBeam with the actual number of other beams
+// (GLSL needs a compile-time constant for array sizes and loop bounds). The value below is
+// only a fallback default if the string replacement ever fails to match.
 #define MAX_SENSORS 8
 
 // Parameters of the OTHER sensors (the current sensor itself is not included)

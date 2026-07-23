@@ -6,12 +6,6 @@ export interface Vector3 {
 }
 
 /**
- * Maximum number of "other sensors" supported for multi-beam clipping.
- * Must match `#define MAX_SENSORS` in `shaders/beam.frag.glsl`.
- */
-export const MAX_SENSORS = 8 as const
-
-/**
  * Static description of a single sensor.
  * Passed to BeamOverlay at construction time; immutable afterward.
  */

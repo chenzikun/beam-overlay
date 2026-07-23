@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 import type { SensorDef, Readings, FrameData } from './types'
-import { MAX_SENSORS } from './types'
 import { SensorBeam } from './SensorBeam'
 
 /**
@@ -27,12 +26,14 @@ export class BeamOverlay {
    *                           If your scene has 1 unit = 10mm, pass { mmPerUnit: 10 }.
    */
   constructor(sensors: SensorDef[], options?: { mmPerUnit?: number }) {
-    if (sensors.length > MAX_SENSORS) {
-      console.warn(`[beam-overlay] sensor count ${sensors.length} exceeds MAX_SENSORS=${MAX_SENSORS}; extras will be ignored`)
-    }
-
     const mmPerUnit = options?.mmPerUnit ?? 1
-    this._beams = sensors.slice(0, MAX_SENSORS).map(def => new SensorBeam(def, mmPerUnit))
+
+    // No fixed sensor cap: the shader's uniform arrays and clip loop are sized at construction
+    // time to the actual number of "other" beams each beam must test against (total - 1).
+    // GLSL forbids zero-length arrays, so clamp the lower bound to 1.
+    // (The only real ceiling is the GPU's uniform capacity, typically hundreds of sensors.)
+    const maxOthers = Math.max(sensors.length - 1, 1)
+    this._beams = sensors.map(def => new SensorBeam(def, mmPerUnit, maxOthers))
     this.group  = new THREE.Group()
     this._beams.forEach(b => this.group.add(b.group))
 

@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/beam-overlay.svg)](https://www.npmjs.com/package/beam-overlay)
 [![license](https://img.shields.io/npm/l/beam-overlay.svg)](./LICENSE)
 
-![beam-overlay demo — YHS robot with ultrasonic beams](./sample.png)
+![beam-overlay demo — YHS robot with ultrasonic beams](./docs/sample.png)
 
 A Three.js library for visualizing the **detection volumes of directional range sensors** in 3D.
 
@@ -40,7 +40,7 @@ const overlay = new BeamOverlay([
     minRangeMm:     250,
     maxRangeMm:     1000,
   },
-  // ... up to 8 sensors
+  // ... any number of sensors
 ])
 
 // Option 2: fill the beam shape from a preset, only write key/position/direction (recommended)
@@ -76,7 +76,8 @@ overlay.dispose()
 
 ### `new BeamOverlay(sensors: SensorDef[], options?: { mmPerUnit?: number })`
 
-- `sensors`: array of sensor definitions (up to 8, see `MAX_SENSORS`)
+- `sensors`: array of sensor definitions (no fixed limit; the shader is sized to the actual
+  count at construction time — the only ceiling is GPU uniform capacity, typically hundreds)
 - `options.mmPerUnit`: scene scale factor, 1 scene unit = mmPerUnit mm (default 1)
 
 ### `overlay.group: THREE.Group`

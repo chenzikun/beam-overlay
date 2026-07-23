@@ -1,5 +1,4 @@
 export type { SensorDef, Vector3, Readings, BeamState, FrameData } from './types'
-export { MAX_SENSORS } from './types'
 export { BeamOverlay } from './BeamOverlay'
 export type { BeamPreset } from './presets'
 export { ULTRASONIC_PRESET, withPreset } from './presets'

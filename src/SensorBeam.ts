@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 import type { SensorDef, Vector3, BeamState } from './types'
-import { MAX_SENSORS } from './types'
 import { normalize } from './math'
 import beamVertSrc from './shaders/beam.vert.glsl'
 import beamFragSrc from './shaders/beam.frag.glsl'
@@ -20,6 +19,8 @@ export class SensorBeam {
   private readonly _maxRangeMm: number
   /** scene unit = 1 mm / mmPerUnit (e.g. if 1 scene unit = 10mm, mmPerUnit = 10) */
   private readonly _mmPerUnit: number
+  /** Max number of "other" sensors this beam clips against (= total - 1, min 1) */
+  private readonly _maxOthers: number
   /** Sensor position in scene coordinates (scene units) */
   private readonly _scenePos: Vector3
 
@@ -38,11 +39,14 @@ export class SensorBeam {
    * @param mmPerUnit Scene unit scale factor: 1 scene unit = mmPerUnit mm.
    *                  Default 1 (mm == scene unit).
    *                  The YHS demo uses 1 unit = 10mm, so it passes 10.
+   * @param maxOthers Number of "other" sensors to clip against (= total - 1, min 1).
+   *                  Sizes the shader uniform arrays and clip loop at construction time.
    */
-  constructor(def: SensorDef, mmPerUnit = 1) {
+  constructor(def: SensorDef, mmPerUnit = 1, maxOthers = 1) {
     this.key       = def.key
     this._def      = def
     this._mmPerUnit = mmPerUnit
+    this._maxOthers = Math.max(maxOthers, 1)
     this._dir      = normalize(def.direction)
     this._tanH     = Math.tan((def.beamAngleHDeg * Math.PI) / 180)
     this._tanV     = Math.tan((def.beamAngleVDeg * Math.PI) / 180)
@@ -83,13 +87,14 @@ export class SensorBeam {
 
     // -- ShaderMaterial (cone + cap share the uniforms structure, but each has its own instance)
     // selfConeClip: 0 = cone (sphere clip)  1 = cap (+ elliptic cone-angle clip)
+    const n = this._maxOthers
     const makeUniforms = (selfConeClip: 0 | 1) => ({
-      // Occlusion parameters of other sensors
-      uOtherApex:  { value: Array(MAX_SENSORS).fill(null).map(() => new THREE.Vector3()) },
-      uOtherDir:   { value: Array(MAX_SENSORS).fill(null).map(() => new THREE.Vector3()) },
-      uOtherTanH:  { value: new Float32Array(MAX_SENSORS) },
-      uOtherTanV:  { value: new Float32Array(MAX_SENSORS) },
-      uOtherRange: { value: new Float32Array(MAX_SENSORS) },
+      // Occlusion parameters of other sensors (arrays sized to the actual number of other beams)
+      uOtherApex:  { value: Array(n).fill(null).map(() => new THREE.Vector3()) },
+      uOtherDir:   { value: Array(n).fill(null).map(() => new THREE.Vector3()) },
+      uOtherTanH:  { value: new Float32Array(n) },
+      uOtherTanV:  { value: new Float32Array(n) },
+      uOtherRange: { value: new Float32Array(n) },
       uOtherCount: { value: 0 },
       // Own sensor parameters (own sphere clip + cap cone-angle clip)
       uOwnApex:      { value: ownApex.clone() },
@@ -103,9 +108,16 @@ export class SensorBeam {
       uOpacity: { value: 0.2 },
     })
 
+    // Inject the actual array size into the fragment shader (GLSL needs a compile-time constant).
+    // Replaces the default `#define MAX_SENSORS 8` with the real count for this overlay.
+    const fragSrc = beamFragSrc.replace(
+      /#define\s+MAX_SENSORS\s+\d+/,
+      `#define MAX_SENSORS ${this._maxOthers}`,
+    )
+
     const matParams = {
       vertexShader: beamVertSrc,
-      fragmentShader: beamFragSrc,
+      fragmentShader: fragSrc,
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,   // both cone/cap use double-side: front = outer surface (always visible), back = inner surface (culled on overlap)
@@ -239,7 +251,7 @@ export class SensorBeam {
    * Call every frame after applyReading.
    */
   setOtherSensors(others: SensorBeam[]): void {
-    const count = Math.min(others.length, MAX_SENSORS)
+    const count = Math.min(others.length, this._maxOthers)
 
     for (const mat of [this._coneMat, this._capMat]) {
       const u = mat.uniforms
