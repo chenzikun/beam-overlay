@@ -1,6 +1,6 @@
 {
   "name": "beam-overlay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Three.js overlay for directional range-sensor detection volumes (ultrasonic, radar, IR, ToF) with correct multi-beam surface culling via GLSL",
   "type": "module",
   "license": "MIT",
@@ -41,7 +41,9 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly",
     "test": "vitest run",
