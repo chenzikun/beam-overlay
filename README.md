@@ -115,7 +115,7 @@ Releases all GPU resources.
 
 ## Example (Demo)
 
-`examples/yhs-demo` is a full example rendering a YHS robot plus 6 overlapping ultrasonic beams.
+`docs/sample` is a full example rendering a YHS robot plus 6 overlapping ultrasonic beams.
 
 ```bash
 # Build the library first (the demo references the build output via file:../..)
@@ -123,7 +123,7 @@ npm install
 npm run build
 
 # Run the demo
-cd examples/yhs-demo
+cd docs/sample
 npm install
 npm run dev
 ```
