@@ -3,6 +3,8 @@
 [![npm version](https://img.shields.io/npm/v/beam-overlay.svg)](https://www.npmjs.com/package/beam-overlay)
 [![license](https://img.shields.io/npm/l/beam-overlay.svg)](./LICENSE)
 
+![beam-overlay demo — YHS robot with ultrasonic beams](./sample.png)
+
 A Three.js library for visualizing the **detection volumes of directional range sensors** in 3D.
 
 Each sensor is rendered as an "elliptic cone + spherical cap" solid (its detection beam).
@@ -12,8 +14,6 @@ obstacles are close.
 
 It is **sensor-type agnostic**: ultrasonic, mmWave radar, IR range finders, ToF, etc.
 `ULTRASONIC_PRESET` is just a built-in convenience preset for a common beam shape.
-
-![beam-overlay demo — YHS robot with ultrasonic beams](./sample.png)
 
 ## Install
 
